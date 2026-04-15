@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+
+# Django
+db.sqlite3
+*.log
+staticfiles/
+media/
+
+# Environment files
+.env
+.env.*
+!.env.local.example
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Frontend (Next.js)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+
+# Package managers
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Coverage
+coverage/
+.coverage
+htmlcov/
