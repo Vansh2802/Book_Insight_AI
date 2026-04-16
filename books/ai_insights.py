@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from .models import Book
-from .rag import search_similar_books, _llm_client, LLM_MODEL, index_all_books
+from .rag import search_similar_books, _anthropic_client, LLM_MODEL, index_all_books
 
 
 def generate_summary(book: Book) -> str:
@@ -29,13 +29,17 @@ def generate_summary(book: Book) -> str:
         f"Description:\n{desc}"
     )
 
-    client = _llm_client()
-    resp = client.chat.completions.create(
+    client = _anthropic_client()
+    if client is None:
+        return ""
+    resp = client.messages.create(
         model=LLM_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=1024,
+        system=system,
+        messages=[{"role": "user", "content": user}],
         temperature=0.3,
     )
-    return (resp.choices[0].message.content or "").strip()
+    return (resp.content[0].text or "").strip()
 
 
 def recommend_books(book_id: int) -> List[Dict[str, Any]]:

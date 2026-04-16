@@ -6,12 +6,15 @@ __pycache__/
 .Python
 .venv/
 venv/
+.venv311/
 
 # Django
 db.sqlite3
 *.log
 staticfiles/
 media/
+chroma_db/
+chroma_db_v2/
 
 # Environment files
 .env

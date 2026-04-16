@@ -14,8 +14,10 @@ export type Book = {
 
 export type AskResponse = {
   answer: string;
-  sources: string[];
+  sources: { title: string; snippet: string }[];
   error?: string;
+  cached?: boolean;
+  cached_at?: string;
 };
 
 async function apiFetch(path: string, init?: RequestInit) {

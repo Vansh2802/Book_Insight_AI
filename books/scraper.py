@@ -12,25 +12,16 @@ API usage:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Optional
-from urllib.parse import urljoin
+from typing import Optional
+import traceback
 
 from django.db import transaction
 
 from .models import Book
 
 
-BASE_URL = "http://books.toscrape.com/"
-CATEGORY_URL = urljoin(BASE_URL, "catalogue/category/books_1/index.html")
-
-
-@dataclass
-class ScrapedBook:
-    title: str
-    price_as_float: Optional[float]
-    detail_url: str
-    description: str
+BASE_URL = "http://books.toscrape.com/catalogue/"
+FIRST_PAGE_URL = "http://books.toscrape.com/catalogue/page-1.html"
 
 
 def _clean_text(text: str) -> str:
@@ -48,7 +39,8 @@ def _get_soup(url: str, session):
 
 
 def _parse_price_to_float(price_text: str) -> Optional[float]:
-    t = _clean_text(price_text).replace("£", "")
+    # Handles both "£51.77" and "Â£51.77" encodings.
+    t = _clean_text(price_text).replace("Â", "").replace("£", "")
     try:
         return float(t)
     except ValueError:
@@ -56,34 +48,11 @@ def _parse_price_to_float(price_text: str) -> Optional[float]:
 
 
 def _extract_description(detail_soup) -> str:
-    # On books.toscrape.com the description sits in the <p> after #product_description.
-    header = detail_soup.select_one("#product_description")
-    if not header:
-        return ""
-    p = header.find_next_sibling("p")
-    if not p:
-        return ""
-    return _clean_text(p.get_text(" ", strip=True))
-
-
-def _scrape_listing_page(listing_url: str, session) -> tuple[List[tuple[str, str, Optional[float]]], Optional[str]]:
-    soup = _get_soup(listing_url, session)
-
-    items: List[tuple[str, str, Optional[float]]] = []
-    for pod in soup.select("article.product_pod"):
-        a = pod.select_one("h3 a")
-        if not a:
-            continue
-        title = _clean_text(a.get("title") or a.get_text(" ", strip=True))
-        rel = a.get("href") or ""
-        detail_url = urljoin(listing_url, rel)
-        price_el = pod.select_one(".price_color")
-        price = _parse_price_to_float(price_el.get_text(strip=True) if price_el else "")
-        items.append((title, detail_url, price))
-
-    next_a = soup.select_one("li.next a")
-    next_url = urljoin(listing_url, next_a.get("href")) if next_a and next_a.get("href") else None
-    return items, next_url
+    desc_tag = detail_soup.select_one("#product_description ~ p")
+    if not desc_tag:
+        return "No description available"
+    description = _clean_text(desc_tag.get_text(" ", strip=True))
+    return description or "No description available"
 
 
 def run_scraper(target_count: int = 30) -> dict:
@@ -96,6 +65,7 @@ def run_scraper(target_count: int = 30) -> dict:
     - duplicates: skipped if a book with same title already exists
     """
     target = max(1, int(target_count))
+    max_pages = max(3, (target + 19) // 20)
 
     created = 0
     skipped = 0
@@ -104,31 +74,60 @@ def run_scraper(target_count: int = 30) -> dict:
     import requests
 
     session = requests.Session()
-    listing_url: Optional[str] = CATEGORY_URL
+    print("[scraper] Scraping started")
 
     with transaction.atomic():
-        while listing_url and scraped < target:
-            rows, listing_url = _scrape_listing_page(listing_url, session)
-            for title, detail_url, price in rows:
+        for page in range(1, max_pages + 1):
+            if scraped >= target:
+                break
+
+            page_url = FIRST_PAGE_URL if page == 1 else f"{BASE_URL}page-{page}.html"
+            soup = _get_soup(page_url, session)
+            books = soup.select("article.product_pod")
+
+            for book in books:
                 if scraped >= target:
                     break
+
+                a = book.select_one("h3 a")
+                price_node = book.select_one("p.price_color")
+                if not a or not price_node:
+                    skipped += 1
+                    continue
+
+                title = _clean_text(a.get("title") or "")
+                relative_url = (a.get("href") or "").strip()
+                price = _parse_price_to_float(price_node.get_text(strip=True))
+
+                if not title or not relative_url or price is None:
+                    skipped += 1
+                    continue
+
+                detail_url = f"{BASE_URL}{relative_url.replace('../', '')}"
                 scraped += 1
 
                 if Book.objects.filter(title=title).exists():
                     skipped += 1
                     continue
 
-                detail_soup = _get_soup(detail_url, session)
-                description = _extract_description(detail_soup)
+                try:
+                    detail_soup = _get_soup(detail_url, session)
+                    description = _extract_description(detail_soup)
 
-                Book.objects.create(
-                    title=title,
-                    author="Unknown",
-                    description=description,
-                    rating=price,
-                    book_url=detail_url,
-                )
-                created += 1
+                    Book.objects.create(
+                        title=title,
+                        author="Unknown",
+                        description=description,
+                        rating=price,
+                        book_url=detail_url,
+                    )
+                    created += 1
+                    print(f"Scraped book: {title}")
+                except Exception:
+                    skipped += 1
+                    print(f"[scraper] Failed to save book '{title}' from {detail_url}")
+                    traceback.print_exc()
 
+    print(f"Total saved: {created}")
     return {"scraped": scraped, "created": created, "skipped": skipped}
 

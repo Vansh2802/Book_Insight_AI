@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,22 +31,22 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-zinc-50 text-zinc-900">
         <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-            <a href="/" className="font-semibold tracking-tight">
+            <Link href="/" className="font-semibold tracking-tight">
               Book AI
-            </a>
+            </Link>
             <nav className="flex items-center gap-4 text-sm">
-              <a
+              <Link
                 href="/"
                 className="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900"
               >
                 Books
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/qa"
                 className="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900"
               >
                 Q&A
-              </a>
+              </Link>
             </nav>
           </div>
         </header>

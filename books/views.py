@@ -1,6 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import traceback
 
 from .models import Book
 from .serializers import BookSerializer
@@ -53,20 +54,45 @@ class BookUploadView(APIView):
     """
 
     def post(self, request):
-        # Optional override: {"target_count": 30}
-        target_count = request.data.get("target_count", 30) if isinstance(request.data, dict) else 30
+        try:
+            # Optional override: {"target_count": 30}
+            target_count = request.data.get("target_count", 30) if isinstance(request.data, dict) else 30
 
-        # Lazy import so the server can start even if optional deps aren't installed yet.
-        from .scraper import run_scraper
-        from .rag import index_all_books
+            print("[upload] Scraping started")
 
-        scrape_stats = run_scraper(target_count=int(target_count))
-        indexed_chunks = index_all_books()
+            # Lazy import so the server can start even if optional deps aren't installed yet.
+            from .scraper import run_scraper
+            from .rag import index_books
 
-        return Response(
-            {"message": "Scrape complete and RAG index updated.", "scrape": scrape_stats, "indexed_chunks": indexed_chunks},
-            status=status.HTTP_200_OK,
-        )
+            scrape_stats = run_scraper(target_count=int(target_count))
+            print(f"[upload] Scraping finished: {scrape_stats}")
+
+            books = (
+                Book.objects.exclude(description__isnull=True)
+                .exclude(description__exact="")
+                .only("id", "title", "description")
+            )
+            books_to_index = list(books)
+            print(f"[upload] Books available for indexing: {len(books_to_index)}")
+
+            indexed_chunks = index_books(books_to_index)
+            print(f"[upload] Embeddings created: {indexed_chunks}")
+
+            created_count = int(scrape_stats.get("created", 0))
+            return Response(
+                {
+                    "message": "Books uploaded and indexed successfully",
+                    "count": created_count,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as exc:
+            print("[upload] Failed during upload")
+            traceback.print_exc()
+            return Response(
+                {"error": f"Upload failed: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class BookAskView(APIView):
@@ -87,9 +113,10 @@ class BookAskView(APIView):
         from .rag import answer_question
 
         try:
+            # Always return a JSON payload (HTTP 200) so the frontend can display
+            # a clean error message from `result.error` without treating it as a network failure.
             result = answer_question(question)
-            status_code = status.HTTP_200_OK if not result.get("error") else status.HTTP_400_BAD_REQUEST
-            return Response(result, status=status_code)
+            return Response(result, status=status.HTTP_200_OK)
         except Exception as exc:
             return Response(
                 {"answer": "", "sources": [], "error": f"Failed to answer question: {exc}"},

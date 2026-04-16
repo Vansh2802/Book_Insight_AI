@@ -18,23 +18,39 @@ Manual test (after you have books in DB):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Iterable, List, Dict, Any, Sequence
 import hashlib
 import os
+import re
+
+from dotenv import load_dotenv
+from anthropic import Anthropic
 
 from .models import Book
+
+load_dotenv()
 
 
 DEFAULT_COLLECTION = os.environ.get("CHROMA_COLLECTION", "book_chunks")
 DEFAULT_CHROMA_PATH = os.environ.get("CHROMA_PATH", "chroma_db")
 DEFAULT_EMBED_MODEL = os.environ.get("EMBED_MODEL", "all-MiniLM-L6-v2")
-
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "openai").lower().strip()  # openai | lmstudio
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "").strip()  # used for lmstudio (OpenAI-compatible)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-3-haiku-20240307")
+client = Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 
 _model = None
+
+CHUNK_MIN_LEN = 300
+CHUNK_MAX_LEN = 450
+CHUNK_OVERLAP = 50
+MIN_INDEXABLE_CHUNK_LEN = 120
+SOURCE_SNIPPET_MAX_LEN = 180
+QA_CACHE_TTL_SECONDS = int(os.environ.get("QA_CACHE_TTL_SECONDS", "900"))
+
+# In-memory cache for Q&A responses, keyed by normalized question.
+_qa_cache: Dict[str, Dict[str, Any]] = {}
 
 
 def _get_model():
@@ -49,16 +65,96 @@ def _get_model():
 
 def _get_collection():
     import chromadb  # type: ignore
+    from chromadb.config import Settings  # type: ignore
 
-    client = chromadb.PersistentClient(path=DEFAULT_CHROMA_PATH)
-    return client.get_or_create_collection(name=DEFAULT_COLLECTION)
+    def _client(path: str):
+        return chromadb.PersistentClient(
+            path=path,
+            settings=Settings(anonymized_telemetry=False),
+        )
+
+    try:
+        return _client(DEFAULT_CHROMA_PATH).get_or_create_collection(name=DEFAULT_COLLECTION)
+    except KeyError as exc:
+        # This can happen when an existing on-disk Chroma DB was created by an older
+        # Chroma version and the internal config schema is incompatible.
+        if str(exc) != "'_type'":
+            raise
+
+        fallback_path = os.environ.get("CHROMA_PATH_FALLBACK", f"{DEFAULT_CHROMA_PATH}_v2")
+        print(
+            f"[chroma] Existing DB at '{DEFAULT_CHROMA_PATH}' is incompatible (missing _type). "
+            f"Using fresh DB at '{fallback_path}'."
+        )
+        return _client(fallback_path).get_or_create_collection(name=DEFAULT_COLLECTION)
 
 
-def chunk_text(text: str, min_len: int = 300, max_len: int = 500, overlap: int = 60) -> List[str]:
+def _clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _is_indexable_text(text: str) -> bool:
+    return len(_clean_text(text)) >= MIN_INDEXABLE_CHUNK_LEN
+
+
+def _trim_snippet(text: str, max_len: int = SOURCE_SNIPPET_MAX_LEN) -> str:
+    cleaned = _clean_text(text)
+    if len(cleaned) <= max_len:
+        return cleaned
+    cut = cleaned[:max_len].rsplit(" ", 1)[0].strip()
+    return f"{cut or cleaned[:max_len].strip()}..."
+
+
+def _cache_key(question: str) -> str:
+    return _clean_text(question).lower()
+
+
+def _get_cached_answer(question: str) -> Dict[str, Any] | None:
+    key = _cache_key(question)
+    if not key:
+        return None
+
+    entry = _qa_cache.get(key)
+    if not entry:
+        return None
+
+    expires_at = entry["expires_at"]
+    if datetime.now(timezone.utc) > expires_at:
+        _qa_cache.pop(key, None)
+        return None
+
+    return {
+        "answer": entry["answer"],
+        "sources": entry["sources"],
+        "cached": True,
+        "cached_at": entry["cached_at"],
+    }
+
+
+def _set_cached_answer(question: str, answer: str, sources: List[Dict[str, str]]) -> None:
+    key = _cache_key(question)
+    if not key:
+        return
+
+    now = datetime.now(timezone.utc)
+    _qa_cache[key] = {
+        "answer": answer,
+        "sources": sources,
+        "cached_at": now.isoformat(),
+        "expires_at": now + timedelta(seconds=QA_CACHE_TTL_SECONDS),
+    }
+
+
+def chunk_text(
+    text: str,
+    min_len: int = CHUNK_MIN_LEN,
+    max_len: int = CHUNK_MAX_LEN,
+    overlap: int = CHUNK_OVERLAP,
+) -> List[str]:
     """
     Chunk text by character length. Keeps it simple and deterministic.
     """
-    t = (text or "").strip()
+    t = _clean_text(text)
     if not t:
         return []
 
@@ -67,8 +163,12 @@ def chunk_text(text: str, min_len: int = 300, max_len: int = 500, overlap: int =
     n = len(t)
     step = max(1, max_len - overlap)
     while i < n:
-        chunk = t[i : i + max_len].strip()
-        if len(chunk) >= min_len or (i + max_len >= n and len(chunk) > 0):
+        chunk = _clean_text(t[i : i + max_len])
+        if len(chunk) < MIN_INDEXABLE_CHUNK_LEN:
+            i += step
+            continue
+
+        if len(chunk) >= min_len or (i + max_len >= n and len(chunk) >= MIN_INDEXABLE_CHUNK_LEN):
             chunks.append(chunk)
         i += step
     return chunks
@@ -90,7 +190,11 @@ def index_book(book: Book) -> int:
     Index a single book's description chunks into ChromaDB.
     Uses deterministic IDs so re-indexing overwrites logically.
     """
-    chunks = chunk_text(book.description)
+    description = _clean_text(book.description)
+    if not _is_indexable_text(description):
+        return 0
+
+    chunks = chunk_text(description)
     if not chunks:
         return 0
 
@@ -105,11 +209,23 @@ def index_book(book: Book) -> int:
     return len(chunks)
 
 
-def index_all_books() -> int:
+def index_books(books: Sequence[Book] | Iterable[Book]) -> int:
+    """
+    Index a collection of books while skipping duplicates and non-indexable descriptions.
+    """
     total = 0
-    for b in Book.objects.all().only("id", "title", "description"):
-        total += index_book(b)
+    seen_ids: set[int] = set()
+    for book in books:
+        if book.id in seen_ids:
+            continue
+        seen_ids.add(book.id)
+        total += index_book(book)
     return total
+
+
+def index_all_books() -> int:
+    books = Book.objects.exclude(description__isnull=True).exclude(description__exact="").only("id", "title", "description")
+    return index_books(books)
 
 
 @dataclass
@@ -150,35 +266,30 @@ def search_similar_books(query: str, top_k: int = 3) -> List[SimilarBookChunk]:
     return out
 
 
-def _llm_client():
-    """
-    Returns an OpenAI-compatible client.
-
-    Providers:
-      - openai: requires OPENAI_API_KEY
-      - lmstudio: set LLM_BASE_URL (e.g. http://localhost:1234/v1) and any dummy OPENAI_API_KEY
-    """
-    from openai import OpenAI  # type: ignore
-
-    if LLM_PROVIDER == "lmstudio":
-        base_url = LLM_BASE_URL or "http://localhost:1234/v1"
-        api_key = os.environ.get("OPENAI_API_KEY", "lmstudio")
-        return OpenAI(base_url=base_url, api_key=api_key)
-
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set. Set it or use LLM_PROVIDER=lmstudio with LLM_BASE_URL.")
-    return OpenAI(api_key=api_key)
+def _anthropic_client() -> Anthropic | None:
+    return client
 
 
-def _build_context(chunks: List[SimilarBookChunk]) -> tuple[str, List[str]]:
-    sources: List[str] = []
+def _build_context(chunks: List[SimilarBookChunk]) -> tuple[str, List[Dict[str, str]]]:
+    seen_books: set[int] = set()
+    sources: List[Dict[str, str]] = []
     parts: List[str] = []
-    for i, c in enumerate(chunks, start=1):
-        snippet = (c.description_chunk or "")[:240].strip()
-        sources.append(c.title or snippet or f"Book {c.book_id}")
-        parts.append(f"[{i}] Title: {c.title}\nChunk: {c.description_chunk}")
-    return "\n\n".join(parts).strip(), sources
+    for c in chunks:
+        if c.book_id in seen_books:
+            continue
+
+        snippet = _trim_snippet(c.description_chunk)
+        if not snippet:
+            continue
+
+        seen_books.add(c.book_id)
+        title = (c.title or f"Book {c.book_id}").strip()
+        sources.append({"title": title, "snippet": snippet})
+        parts.append(f"Title: {title}\nChunk: {c.description_chunk}")
+
+    numbered_parts = [f"[{i}] {part}" for i, part in enumerate(parts, start=1)]
+
+    return "\n\n".join(numbered_parts).strip(), sources
 
 
 def answer_question(query: str) -> Dict[str, Any]:
@@ -193,27 +304,67 @@ def answer_question(query: str) -> Dict[str, Any]:
     if not q:
         return {"answer": "", "sources": [], "error": "Empty question."}
 
-    matches = search_similar_books(q, top_k=3)
+    if not ANTHROPIC_API_KEY:
+        print("[rag] ANTHROPIC_API_KEY missing; cannot generate answer")
+        return {
+            "answer": "",
+            "sources": [],
+            "error": "ANTHROPIC_API_KEY is not configured. Add it to your environment or .env file.",
+        }
+
+    print(f"[rag] Answering question: {q[:120]}")
+
+    cached = _get_cached_answer(q)
+    if cached:
+        print("[rag] Cache hit")
+        return cached
+
+    matches = search_similar_books(q, top_k=6)
+    print(f"[rag] Retrieved chunks: {len(matches)}")
     if not matches:
-        return {"answer": "No relevant matches found in the book database.", "sources": []}
+        return {"answer": "", "sources": [], "error": "No relevant results found for this question."}
 
     context, sources = _build_context(matches)
     if not context:
-        return {"answer": "No usable context found (empty descriptions).", "sources": []}
+        return {"answer": "", "sources": [], "error": "No usable context found in indexed book descriptions."}
 
-    system = (
-        "You are a helpful assistant for a Book Insight Platform. "
-        "Answer using ONLY the provided context. "
-        "If the context doesn't contain enough information, say so."
-    )
-    user = f"Context:\n{context}\n\nQuestion: {q}\n\nReturn a concise answer grounded in the context."
+    anthropic_client = _anthropic_client()
+    if anthropic_client is None:
+        print("[rag] Anthropic client initialization failed")
+        return {
+            "answer": "",
+            "sources": [],
+            "error": "Anthropic client could not be initialized. Check ANTHROPIC_API_KEY configuration.",
+        }
 
-    client = _llm_client()
-    resp = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.2,
-    )
-    answer = (resp.choices[0].message.content or "").strip()
+    try:
+        model = os.getenv('LLM_MODEL', 'claude-3-haiku-20240307')
+        print(f"[rag] Sending prompt to Anthropic model: {model}")
+        response = anthropic_client.messages.create(
+            model=model,
+            max_tokens=1024,
+            system="You are a helpful AI assistant answering questions about books.",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context}\n\nQuestion:\n{q}",
+                },
+            ],
+            temperature=0.3,
+        )
+        answer = (response.content[0].text or "").strip()
+    except Exception as exc:
+        print(f"[rag] Anthropic request failed: {exc}")
+        return {
+            "answer": "",
+            "sources": sources,
+            "error": f"Anthropic API request failed: {exc}",
+        }
+
+    if not answer:
+        return {"answer": "", "sources": sources, "error": "LLM returned an empty answer."}
+
+    print(f"[rag] Generated answer length: {len(answer)}")
+    _set_cached_answer(q, answer, sources)
     return {"answer": answer, "sources": sources}
 
