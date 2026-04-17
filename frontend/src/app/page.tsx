@@ -22,9 +22,9 @@ export default function Home() {
           </div>
 
           {/* Main heading */}
-          <h1 className="animate-fade-in-up delay-100 max-w-3xl bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-700 bg-clip-text text-4xl font-bold tracking-tight text-transparent dark:from-zinc-100 dark:via-zinc-200 dark:to-zinc-400 sm:text-5xl lg:text-6xl">
+          <h1 className="animate-fade-in-up delay-100 max-w-3xl bg-linear-to-br from-zinc-900 via-zinc-800 to-zinc-700 bg-clip-text text-4xl font-bold tracking-tight text-transparent dark:from-zinc-100 dark:via-zinc-200 dark:to-zinc-400 sm:text-5xl lg:text-6xl">
             Explore Books{" "}
-            <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
+            <span className="bg-linear-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">
               with AI
             </span>
           </h1>
@@ -39,7 +39,7 @@ export default function Home() {
           <div className="animate-fade-in-up delay-300 mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
               href="/qa"
-              className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:scale-[1.03] hover:from-emerald-600 hover:to-teal-600 hover:shadow-xl hover:shadow-emerald-500/30 active:scale-[0.98]"
+              className="group inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:scale-[1.03] hover:from-emerald-600 hover:to-teal-600 hover:shadow-xl hover:shadow-emerald-500/30 active:scale-[0.98]"
             >
               Start Asking
               <svg

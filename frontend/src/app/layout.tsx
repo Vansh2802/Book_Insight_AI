@@ -58,7 +58,7 @@ export default function RootLayout({
               href="/"
               className="group flex items-center gap-3 transition-all duration-200 hover:opacity-90"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-lg text-white shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-lg">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-emerald-500 to-teal-500 text-lg text-white shadow-md transition-transform duration-200 group-hover:scale-105 group-hover:shadow-lg">
                 📚
               </span>
               <span className="flex flex-col leading-tight">
@@ -102,7 +102,7 @@ export default function RootLayout({
         <footer className="border-t border-border bg-surface/50">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 sm:flex-row sm:px-6">
             <div className="flex items-center gap-2 text-xs text-muted">
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-emerald-500 to-teal-500 text-[10px] text-white">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-linear-to-br from-emerald-500 to-teal-500 text-[10px] text-white">
                 📚
               </span>
               <span>BookMind AI · Built with AI-powered RAG</span>

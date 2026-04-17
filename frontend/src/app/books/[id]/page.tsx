@@ -98,7 +98,7 @@ export default async function BookDetailPage({
       {/* ─── AI Summary + Recommendations ─── */}
       <div className="animate-fade-in-up delay-200 mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
         {/* AI Summary */}
-        <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-emerald-50/70 to-teal-50/50 p-6 shadow-sm dark:from-emerald-500/5 dark:to-teal-500/5">
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-linear-to-br from-emerald-50/70 to-teal-50/50 p-6 shadow-sm dark:from-emerald-500/5 dark:to-teal-500/5">
           <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-400/10 blur-2xl" />
           <h2 className="relative flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
@@ -150,7 +150,7 @@ export default async function BookDetailPage({
       <div className="animate-fade-in-up delay-300 mt-8 flex items-center justify-center">
         <Link
           href="/qa"
-          className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all duration-200 hover:scale-[1.02] hover:shadow-xl active:scale-[0.98]"
+          className="group inline-flex items-center gap-2 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all duration-200 hover:scale-[1.02] hover:shadow-xl active:scale-[0.98]"
         >
           Ask AI about this book
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5">

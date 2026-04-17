@@ -3,23 +3,22 @@
 import { useEffect, useState } from "react";
 
 export function ToggleTheme() {
-  const [dark, setDark] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    const stored = localStorage.getItem("bookmind-theme");
+    if (stored === "dark") return true;
+    if (stored === "light") return false;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
 
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem("bookmind-theme");
-    if (stored === "dark") {
-      setDark(true);
+    if (dark) {
       document.documentElement.classList.add("dark");
-    } else if (stored === "light") {
-      setDark(false);
+    } else {
       document.documentElement.classList.remove("dark");
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setDark(true);
-      document.documentElement.classList.add("dark");
     }
-  }, []);
+  }, [dark]);
 
   function toggle() {
     const next = !dark;
@@ -31,17 +30,6 @@ export function ToggleTheme() {
       document.documentElement.classList.remove("dark");
       localStorage.setItem("bookmind-theme", "light");
     }
-  }
-
-  if (!mounted) {
-    return (
-      <button
-        aria-label="Toggle theme"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-surface text-muted transition-all duration-200"
-      >
-        <span className="h-4 w-4" />
-      </button>
-    );
   }
 
   return (

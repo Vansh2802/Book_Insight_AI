@@ -63,7 +63,7 @@ export default function QAPage() {
           RAG-powered Q&A
         </div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          Ask <span className="bg-gradient-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">BookMind AI</span>
+          Ask <span className="bg-linear-to-r from-emerald-500 to-teal-500 bg-clip-text text-transparent">BookMind AI</span>
         </h1>
         <p className="max-w-xl text-sm text-muted sm:text-base">
           Ask anything grounded in your book database. Get AI-synthesized answers with cited sources.
@@ -104,7 +104,7 @@ export default function QAPage() {
             id="ask-btn"
             onClick={onAsk}
             disabled={!canAsk}
-            className="h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-7 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition-all duration-200 hover:scale-[1.02] hover:from-emerald-600 hover:to-teal-600 hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-300 disabled:shadow-none dark:disabled:from-zinc-700 dark:disabled:to-zinc-700"
+            className="h-12 rounded-xl bg-linear-to-r from-emerald-500 to-teal-500 px-7 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 transition-all duration-200 hover:scale-[1.02] hover:from-emerald-600 hover:to-teal-600 hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-300 disabled:shadow-none dark:disabled:from-zinc-700 dark:disabled:to-zinc-700"
           >
             {loading ? "Thinking…" : "Ask"}
           </button>

@@ -16,9 +16,9 @@ export function BookCard({ book, index = 0 }: { book: Book; index?: number }) {
       className="group block transition-all duration-200 active:scale-[0.98]"
       style={{ animationDelay: `${index * 0.07}s` }}
     >
-      <Card className="relative min-h-[15rem] overflow-hidden transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-xl group-hover:border-border-hover">
+      <Card className="relative min-h-60 overflow-hidden transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-xl group-hover:border-border-hover">
         {/* Gradient overlay on hover */}
-        <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-emerald-300/10 via-transparent to-teal-300/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-emerald-400/5 dark:to-teal-400/5" />
+        <div className="pointer-events-none absolute inset-0 rounded-2xl bg-linear-to-br from-emerald-300/10 via-transparent to-teal-300/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:from-emerald-400/5 dark:to-teal-400/5" />
 
         <div className="relative z-10 flex h-full flex-1 flex-col">
           {/* Title + badge row */}
