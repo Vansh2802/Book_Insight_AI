@@ -132,7 +132,7 @@ Note: `frontend/README.md` is intentionally a short module note. The root `READM
 
 ## Screenshots
 
-Place your screenshot files in `docs/screenshots/` using the filenames below.
+Screenshots from the current implementation:
 
 ### Home Page
 ![Home Page](docs/screenshots/home-hero.png)
