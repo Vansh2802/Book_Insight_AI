@@ -121,30 +121,12 @@ bookwebsite/
 │   └── views.py
 ├── frontend/
 │   └── src/
-├── docs/
-│   └── screenshots/
 ├── manage.py
 ├── requirements.txt
 └── README.md
 ```
 
 Note: `frontend/README.md` is intentionally a short module note. The root `README.md` is the single source of truth for full project documentation.
-
-## Screenshots
-
-Screenshots from the current implementation:
-
-### Home Page
-![Home Page](docs/screenshots/home-hero.png)
-
-### Book Grid
-![Book Grid](docs/screenshots/book-grid.png)
-
-### Q&A (Empty State)
-![Q&A Empty](docs/screenshots/qa-empty.png)
-
-### Q&A (Answer + Sources)
-![Q&A Answer](docs/screenshots/qa-answer.png)
 
 ## Repo Cleanup Recommendations
 
