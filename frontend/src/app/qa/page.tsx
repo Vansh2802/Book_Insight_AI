@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { askQuestion } from "@/lib/api";
+import { GenreBadge, inferGenreFromText } from "@/components/Badge";
+import { Card } from "@/components/Card";
 
 const SAMPLE_QUESTIONS = [
   "Summarize this book",
@@ -22,7 +24,7 @@ function LoadingDots() {
 export default function QAPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string>("");
-  const [sources, setSources] = useState<{ title: string; snippet: string }[]>([]);
+  const [sources, setSources] = useState<{ title: string; snippet: string; genre?: string }[]>([]);
   const [error, setError] = useState<string>("");
   const [fromCache, setFromCache] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -56,13 +58,13 @@ export default function QAPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:py-14">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">Ask The Library AI</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">Ask BookMind AI</h1>
         <p className="text-sm text-zinc-600 sm:text-base">
           Ask questions grounded in the book database (RAG).
         </p>
       </div>
 
-      <div className="mt-8 rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-sm backdrop-blur">
+      <Card className="mt-8 bg-white/95 backdrop-blur">
         <label className="text-sm font-medium text-zinc-900" htmlFor="q">
           Your question
         </label>
@@ -72,7 +74,7 @@ export default function QAPage() {
               key={sample}
               type="button"
               onClick={() => setQuestion(sample)}
-              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100"
+              className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium text-zinc-700 transition-all duration-200 hover:scale-105 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700"
             >
               {sample}
             </button>
@@ -84,12 +86,12 @@ export default function QAPage() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder='e.g. "Which books mention mystery and travel?"'
-            className="h-11 flex-1 rounded-lg border border-zinc-200 px-3 text-sm outline-none ring-zinc-900/10 focus:ring-4"
+            className="h-12 flex-1 rounded-xl border border-zinc-200 px-4 text-sm outline-none transition-all duration-200 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-200/70"
           />
           <button
             onClick={onAsk}
             disabled={!canAsk}
-            className="h-11 rounded-lg bg-emerald-600 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            className="h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-6 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.02] hover:from-emerald-600 hover:to-teal-600 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:from-zinc-300 disabled:to-zinc-300"
           >
             {loading ? "Thinking..." : "Ask"}
           </button>
@@ -97,10 +99,10 @@ export default function QAPage() {
         <div className="mt-3 text-xs text-zinc-500">
           Tip: run <span className="font-mono">POST /api/books/upload/</span> to scrape + index first.
         </div>
-      </div>
+      </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+        <Card gradientBorder>
           <h2 className="text-sm font-semibold text-zinc-900">Answer</h2>
           {fromCache && !loading ? (
             <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
@@ -112,35 +114,38 @@ export default function QAPage() {
               {error}
             </div>
           ) : (
-            <div className="mt-3 min-h-28 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mt-3 min-h-28 rounded-xl border border-zinc-200 border-l-4 border-l-emerald-500 bg-zinc-50 p-4">
               {loading ? (
                 <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
                   <LoadingDots />
                   <span>Thinking...</span>
                 </div>
               ) : (
-                <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                <p className="whitespace-pre-wrap text-sm leading-8 text-zinc-700">
                   {answer || "Ask a question to see an answer."}
                 </p>
               )}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+        <Card>
           <h2 className="text-sm font-semibold text-zinc-900">Sources</h2>
           {sources?.length ? (
             <ul className="mt-3 space-y-3">
               {sources.map((s, idx) => (
                 <li
                   key={`${idx}-${s.title}-${s.snippet}`}
-                  className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-zinc-700"
+                  className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-zinc-700 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
                 >
-                  <div className="mb-1 flex items-center gap-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-[11px] font-semibold text-zinc-700">
                     {idx + 1}
                     </span>
                     <span className="text-sm font-semibold text-zinc-900">{s.title}</span>
+                    </div>
+                    <GenreBadge genre={s.genre || inferGenreFromText(`${s.title} ${s.snippet}`)} />
                   </div>
                   <p className="text-xs leading-5 text-zinc-600">{s.snippet}</p>
                 </li>
@@ -151,7 +156,7 @@ export default function QAPage() {
               Sources with matching snippets will appear here after you ask.
             </p>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

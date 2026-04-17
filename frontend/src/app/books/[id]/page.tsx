@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBook } from "@/lib/api";
+import { GenreBadge } from "@/components/Badge";
 
 export default async function BookDetailPage({
   params,
@@ -17,6 +18,9 @@ export default async function BookDetailPage({
             {book.title}
           </h1>
           <p className="mt-1 text-sm text-zinc-600">{book.author}</p>
+          <div className="mt-2">
+            <GenreBadge genre={book.genre} />
+          </div>
         </div>
         <Link
           href="/"

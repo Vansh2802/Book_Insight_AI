@@ -15,7 +15,7 @@ export type Book = {
 
 export type AskResponse = {
   answer: string;
-  sources: { title: string; snippet: string }[];
+  sources: { title: string; snippet: string; genre?: string }[];
   error?: string;
   cached?: boolean;
   cached_at?: string;
