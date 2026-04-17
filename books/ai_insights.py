@@ -8,10 +8,88 @@ Functions:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from .models import Book
 from .rag import search_similar_books, _anthropic_client, LLM_MODEL, index_all_books
+
+
+ALLOWED_GENRES = [
+    "Fiction",
+    "Thriller",
+    "Romance",
+    "Fantasy",
+    "Self-help",
+    "Business",
+    "Sci-Fi",
+    "Mystery",
+    "Biography",
+    "History",
+    "Poetry",
+    "Young Adult",
+    "Non-fiction",
+]
+
+_GENRE_NORMALIZATION = {
+    "scifi": "Sci-Fi",
+    "science fiction": "Sci-Fi",
+    "science-fiction": "Sci-Fi",
+    "self help": "Self-help",
+    "self-help": "Self-help",
+    "nonfiction": "Non-fiction",
+    "non fiction": "Non-fiction",
+    "ya": "Young Adult",
+}
+
+
+def _normalize_genre(raw: str) -> str:
+    text = (raw or "").strip().splitlines()[0] if raw else ""
+    text = re.sub(r"[^a-zA-Z\- ]", "", text).strip().lower()
+    if not text:
+        return "Unknown"
+
+    text = _GENRE_NORMALIZATION.get(text, text)
+    for genre in ALLOWED_GENRES:
+        if text == genre.lower():
+            return genre
+
+    return "Unknown"
+
+
+def generate_genre(description: str) -> str:
+    """
+    Predict a single, short genre for a book description using the LLM.
+    Returns something like 'Sci-Fi' or 'Fantasy'.
+    """
+    desc = (description or "").strip()
+    if not desc:
+        return "Unknown"
+
+    system = (
+        "Classify the book into exactly one genre. "
+        "Reply with one label only and no extra text. "
+        "Allowed labels: Fiction, Thriller, Romance, Fantasy, Self-help, "
+        "Business, Sci-Fi, Mystery, Biography, History, Poetry, Young Adult, Non-fiction."
+    )
+    user = f"Description:\n{desc[:1800]}"
+
+    client = _anthropic_client()
+    if client is None:
+        return "Unknown"
+
+    try:
+        resp = client.messages.create(
+            model=LLM_MODEL,
+            max_tokens=8,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            temperature=0.1,
+        )
+        return _normalize_genre(resp.content[0].text or "")
+    except Exception as exc:
+        print(f"[generate_genre] Error: {exc}")
+        return "Unknown"
 
 
 def generate_summary(book: Book) -> str:
@@ -32,14 +110,18 @@ def generate_summary(book: Book) -> str:
     client = _anthropic_client()
     if client is None:
         return ""
-    resp = client.messages.create(
-        model=LLM_MODEL,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-        temperature=0.3,
-    )
-    return (resp.content[0].text or "").strip()
+    try:
+        resp = client.messages.create(
+            model=LLM_MODEL,
+            max_tokens=300,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            temperature=0.3,
+        )
+        return (resp.content[0].text or "").strip()
+    except Exception as exc:
+        print(f"[generate_summary] Error: {exc}")
+        return ""
 
 
 def recommend_books(book_id: int) -> List[Dict[str, Any]]:

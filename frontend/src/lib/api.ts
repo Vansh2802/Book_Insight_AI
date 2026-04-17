@@ -4,6 +4,7 @@ export type Book = {
   id: number;
   title: string;
   author: string;
+  genre?: string | null;
   description: string;
   rating: number | null;
   book_url: string;

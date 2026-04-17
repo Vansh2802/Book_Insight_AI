@@ -23,21 +23,20 @@ from typing import Iterable, List, Dict, Any, Sequence
 import hashlib
 import os
 import re
+from pathlib import Path
 
 from dotenv import load_dotenv
-from anthropic import Anthropic
 
 from .models import Book
 
-load_dotenv()
+# Load backend env vars from project root .env (if present).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 DEFAULT_COLLECTION = os.environ.get("CHROMA_COLLECTION", "book_chunks")
 DEFAULT_CHROMA_PATH = os.environ.get("CHROMA_PATH", "chroma_db")
 DEFAULT_EMBED_MODEL = os.environ.get("EMBED_MODEL", "all-MiniLM-L6-v2")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-LLM_MODEL = os.getenv("LLM_MODEL", "claude-3-haiku-20240307")
-client = Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 
 _model = None
@@ -266,8 +265,57 @@ def search_similar_books(query: str, top_k: int = 3) -> List[SimilarBookChunk]:
     return out
 
 
-def _anthropic_client() -> Anthropic | None:
-    return client
+def get_llm_client() -> tuple[Any, str, str]:
+    """
+    Build and return (client, model_name, provider_name).
+
+    Provider selection priority:
+    1) Use LLM_PROVIDER if explicitly set (openai or anthropic)
+    2) Else auto-detect by keys: OPENAI_API_KEY, then ANTHROPIC_API_KEY
+    """
+    provider_raw = os.getenv("LLM_PROVIDER", "").strip().lower()
+    openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    model_override = os.getenv("LLM_MODEL", "").strip()
+
+    # 1) Explicit provider selection
+    if provider_raw:
+        provider = provider_raw
+    else:
+        # 2) Auto-detection by available credentials
+        if openai_api_key:
+            provider = "openai"
+        elif anthropic_api_key:
+            provider = "anthropic"
+        else:
+            raise ValueError("No AI provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.")
+
+    if provider not in {"openai", "anthropic"}:
+        raise ValueError("Invalid LLM_PROVIDER. Supported values: openai, anthropic.")
+
+    if provider == "openai":
+        if not openai_api_key:
+            raise ValueError("OpenAI API key missing")
+        try:
+            from openai import OpenAI  # type: ignore
+        except ImportError as exc:
+            raise ValueError("OpenAI SDK is not installed. Install 'openai'.") from exc
+
+        model_name = model_override or "gpt-4o-mini"
+        client = OpenAI(api_key=openai_api_key)
+        return client, model_name, provider
+
+    # provider == "anthropic"
+    if not anthropic_api_key:
+        raise ValueError("Anthropic API key missing")
+    try:
+        from anthropic import Anthropic  # type: ignore
+    except ImportError as exc:
+        raise ValueError("Anthropic SDK is not installed. Install 'anthropic'.") from exc
+
+    model_name = model_override or "claude-3-haiku-20240307"
+    client = Anthropic(api_key=anthropic_api_key)
+    return client, model_name, provider
 
 
 def _build_context(chunks: List[SimilarBookChunk]) -> tuple[str, List[Dict[str, str]]]:
@@ -304,14 +352,6 @@ def answer_question(query: str) -> Dict[str, Any]:
     if not q:
         return {"answer": "", "sources": [], "error": "Empty question."}
 
-    if not ANTHROPIC_API_KEY:
-        print("[rag] ANTHROPIC_API_KEY missing; cannot generate answer")
-        return {
-            "answer": "",
-            "sources": [],
-            "error": "ANTHROPIC_API_KEY is not configured. Add it to your environment or .env file.",
-        }
-
     print(f"[rag] Answering question: {q[:120]}")
 
     cached = _get_cached_answer(q)
@@ -328,37 +368,51 @@ def answer_question(query: str) -> Dict[str, Any]:
     if not context:
         return {"answer": "", "sources": [], "error": "No usable context found in indexed book descriptions."}
 
-    anthropic_client = _anthropic_client()
-    if anthropic_client is None:
-        print("[rag] Anthropic client initialization failed")
-        return {
-            "answer": "",
-            "sources": [],
-            "error": "Anthropic client could not be initialized. Check ANTHROPIC_API_KEY configuration.",
-        }
+    try:
+        llm_client, model, provider = get_llm_client()
+    except ValueError as exc:
+        print(f"[rag] LLM client init failed: {exc}")
+        return {"answer": "", "sources": sources, "error": str(exc)}
 
     try:
-        model = os.getenv('LLM_MODEL', 'claude-3-haiku-20240307')
-        print(f"[rag] Sending prompt to Anthropic model: {model}")
-        response = anthropic_client.messages.create(
-            model=model,
-            max_tokens=1024,
-            system="You are a helpful AI assistant answering questions about books.",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Context:\n{context}\n\nQuestion:\n{q}",
-                },
-            ],
-            temperature=0.3,
-        )
-        answer = (response.content[0].text or "").strip()
+        if provider == "anthropic":
+            print(f"[rag] Sending prompt to Anthropic model: {model}")
+            response = llm_client.messages.create(
+                model=model,
+                max_tokens=1024,
+                system="You are a helpful AI assistant answering questions about books.",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"Context:\n{context}\n\nQuestion:\n{q}",
+                    },
+                ],
+                temperature=0.3,
+            )
+            answer = (response.content[0].text or "").strip()
+        else:
+            print(f"[rag] Sending prompt to {provider} model: {model}")
+            response = llm_client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful AI assistant answering questions about books using only provided context.",
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Context:\n{context}\n\nQuestion:\n{q}",
+                    },
+                ],
+                temperature=0.3,
+            )
+            answer = (response.choices[0].message.content or "").strip()
     except Exception as exc:
-        print(f"[rag] Anthropic request failed: {exc}")
+        print(f"[rag] LLM request failed: {exc}")
         return {
             "answer": "",
             "sources": sources,
-            "error": f"Anthropic API request failed: {exc}",
+            "error": f"LLM API request failed: {exc}",
         }
 
     if not answer:

@@ -1,204 +1,112 @@
-# Book Insight AI Platform
+﻿# AI-Powered Book Insight Platform
 
-An AI-powered book discovery and Q&A platform built with Django, ChromaDB, and Next.js.
-It scrapes books, indexes descriptions into a Retrieval-Augmented Generation (RAG) pipeline, and answers user questions with structured source citations.
+## Overview
+AI-Powered Book Insight Platform is a full-stack application that scrapes books, indexes descriptions into a vector database, and serves AI-powered insights through a clean web interface.
 
-## Project Overview
-
-Book Insight AI helps users:
-- Browse scraped books with clean, responsive cards
-- Open detailed pages with AI summary and recommendations
-- Ask natural-language questions grounded in indexed book descriptions
-- See structured citations (book title + relevant snippet) with each answer
-
-The backend uses semantic search over chunked descriptions and an LLM for grounded responses.
-The frontend provides a polished UX with loading states, source cards, and sample prompt shortcuts.
+It combines Django REST APIs, Next.js UI, ChromaDB retrieval, and LLM generation to provide grounded answers, summaries, recommendations, and genre classification.
 
 ## Features
-
-- AI Q&A with RAG over your own book dataset
-- Structured citations for each answer:
-  - title
-  - snippet (trimmed, clean, deduplicated)
-- Response caching for repeated questions (in-memory, TTL-based)
-- Improved chunking quality:
-  - chunk size around 300-500 chars
-  - overlap (~50 chars)
-  - filters empty and very short chunks
-- Frontend UX improvements:
-  - Thinking/loading indicator while generating answers
-  - sample question chips
-  - responsive cards and cleaner layout
-  - friendlier error messages
+- Book scraping and persistence into SQLite
+- RAG-based question answering over indexed book descriptions
+- AI-generated summary for each book detail page
+- Similar-book recommendations using semantic search
+- Genre Classification (NEW): one-time AI genre tagging and DB persistence
 
 ## Tech Stack
+- Backend: Django, Django REST Framework
+- Frontend: Next.js (App Router), TypeScript, Tailwind CSS
+- Relational DB: SQLite
+- Vector DB: ChromaDB
+- AI/LLM: Anthropic/OpenAI-compatible workflow in app services
+- Embeddings: sentence-transformers
 
-Backend:
-- Python 3.12+
-- Django + Django REST Framework
-- ChromaDB
-- sentence-transformers
-- OpenAI-compatible client (OpenAI or LM Studio)
-
-Frontend:
-- Next.js (App Router)
-- TypeScript
-- Tailwind CSS
-
-Data:
-- SQLite (default local DB)
+## Architecture
+- Backend layer:
+  - Scraper ingests books and stores them in SQLite
+  - RAG service chunks descriptions and stores vectors in ChromaDB
+  - API layer serves list/detail/upload/ask endpoints
+- Frontend layer:
+  - Listing page for all books
+  - Detail page with summary, recommendations, and genre
+  - Q&A page for natural-language questions over indexed content
+- AI pipeline:
+  - Retrieve top semantically similar chunks from ChromaDB
+  - Build grounded prompt with sources
+  - Generate answer from LLM and return with citations
 
 ## Setup Instructions
 
-## 1. Clone and Enter Project
-
-```bash
-git clone https://github.com/Vansh2802/Book_Insight_AI.git
-cd Book_Insight_AI
-```
-
-## 2. Backend Setup (Django)
-
+### Backend
 ```bash
 python -m venv .venv
+# Windows
 .venv\Scripts\activate
+# macOS/Linux
+# source .venv/bin/activate
+
 pip install -r requirements.txt
-python manage.py makemigrations books
+python manage.py makemigrations
 python manage.py migrate
 python manage.py runserver
 ```
 
-Backend runs at:
-- http://127.0.0.1:8000
-
-## 3. Frontend Setup (Next.js)
-
+### Frontend
 ```bash
 cd frontend
-cp .env.local.example .env.local
 npm install
 npm run dev
 ```
 
-Frontend runs at:
-- http://localhost:3000
-
-## 4. Configure LLM (Optional but Recommended)
-
-Environment variables can be set for backend runtime:
-- `OPENAI_API_KEY`
-- `LLM_PROVIDER` (`openai` or `lmstudio`)
-- `LLM_MODEL`
-- `LLM_BASE_URL` (for LM Studio / OpenAI-compatible local endpoint)
-
-Optional cache and vector config:
-- `QA_CACHE_TTL_SECONDS` (default: 900)
-- `CHROMA_PATH`
-- `CHROMA_COLLECTION`
-- `EMBED_MODEL`
-
-## 5. Build Index Data
-
-After scraping/importing books, call:
-
-```http
-POST /api/books/upload/
-```
-
-This will scrape books and refresh vector index chunks.
-
 ## API Endpoints
+- GET /api/books/
+- GET /api/books/:id
+- POST /api/books/upload/
+- POST /api/books/ask/
 
-- `GET /api/books/`
-  - List all books
-- `GET /api/books/<id>/`
-  - Get book detail + summary + recommendations
-- `POST /api/books/upload/`
-  - Trigger scraper + rebuild RAG index
-- `POST /api/books/ask/`
-  - Ask a question grounded in indexed descriptions
-  - Request body:
-
+### Sample Payloads
+`POST /api/books/upload/`
 ```json
 {
-  "question": "What is this book about?"
+  "target_count": 30
 }
 ```
 
-Successful response example:
-
+`POST /api/books/ask/`
 ```json
 {
-  "answer": "This book focuses on ...",
-  "sources": [
-    {
-      "title": "The Midnight Library",
-      "snippet": "Nora explores parallel lives and choices across different realities..."
-    },
-    {
-      "title": "Project Hail Mary",
-      "snippet": "A lone astronaut wakes up with memory loss and must save humanity..."
-    }
-  ],
-  "cached": false
+  "question": "Recommend books like atomic habits"
 }
 ```
 
-Error response examples:
+## Sample Questions
+- Recommend books like atomic habits
+- Summarize this book
+- Which books mention fiction themes?
 
-```json
-{
-  "answer": "",
-  "sources": [],
-  "error": "Empty question."
-}
+## Folder Structure
+```text
+bookwebsite/
+├── book_ai_backend/
+├── books/
+│   ├── migrations/
+│   ├── ai_insights.py
+│   ├── models.py
+│   ├── serializers.py
+│   └── views.py
+├── frontend/
+│   └── src/
+├── manage.py
+├── requirements.txt
+└── README.md
 ```
-
-```json
-{
-  "answer": "",
-  "sources": [],
-  "error": "No relevant results found for this question."
-}
-```
-
-## Sample Q&A
-
-Question:
-- "What is this book about?"
-
-Sample answer:
-- "The book centers on a protagonist facing emotional and practical conflicts, with the plot exploring personal growth and difficult choices."
-
-Sample sources:
-- Title: The Midnight Library
-  - Snippet: "Nora explores alternate versions of her life, reflecting on regret, identity, and meaning..."
-- Title: The Alchemist
-  - Snippet: "A shepherd embarks on a journey to discover his personal legend and purpose..."
-
-Question:
-- "Recommend similar books"
-
-Sample answer:
-- "If you liked this theme, you may enjoy character-driven journeys with introspective themes and transformative arcs."
 
 ## Screenshots
+- Home page: docs/screenshots/home.png
+- Book detail page: docs/screenshots/book-detail.png
+- Q&A page: docs/screenshots/qa.png
 
-Add screenshots in a future update (placeholders):
-- `docs/screenshots/home.png`
-- `docs/screenshots/book-detail.png`
-- `docs/screenshots/qa.png`
-
-## Bonus Features
-
-- In-memory Q&A cache with TTL:
-  - Key: normalized user question
-  - Value: answer + structured sources + timestamp
-  - Repeated questions can return faster cached responses
-
-## Notes for Production
-
-- Replace in-memory cache with Redis for multi-instance deployments
-- Add monitoring/logging and request tracing
-- Add retry/fallback strategy for LLM provider outages
-- Add authentication and rate limiting for public API exposure
+## Repo Cleanup Suggestions
+- Keep virtual environments out of version control: `.venv/`, `.venv311/`
+- Ignore local DB artifacts: `db.sqlite3`
+- Keep only one active vector store directory (prefer `chroma_db_v2/`)
+- Do not commit secrets in `.env`

@@ -32,7 +32,18 @@ class BookDetailView(generics.RetrieveAPIView):
         data = BookSerializer(book).data
 
         # Lazy import: only needed for this endpoint.
-        from .ai_insights import generate_summary, recommend_books
+        from .ai_insights import generate_summary, recommend_books, generate_genre
+
+        # 1. Check if genre missing, generate once and save
+        if not book.genre:
+            try:
+                new_genre = generate_genre(book.description)
+                book.genre = new_genre
+                book.save(update_fields=["genre"])
+                data["genre"] = new_genre
+            except Exception as e:
+                print(f"Failed to generate genre: {e}")
+                data["genre"] = "Unknown"
 
         try:
             data["summary"] = generate_summary(book)
@@ -110,16 +121,14 @@ class BookAskView(APIView):
         if not question:
             return Response({"answer": "", "sources": [], "error": "Empty question."}, status=status.HTTP_400_BAD_REQUEST)
 
-        from .rag import answer_question
-
         try:
+            from .rag import answer_question
+
             # Always return a JSON payload (HTTP 200) so the frontend can display
             # a clean error message from `result.error` without treating it as a network failure.
             result = answer_question(question)
             return Response(result, status=status.HTTP_200_OK)
         except Exception as exc:
-            return Response(
-                {"answer": "", "sources": [], "error": f"Failed to answer question: {exc}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            traceback.print_exc()
+            return Response({"answer": "", "sources": [], "error": f"Failed to answer question: {exc}"}, status=status.HTTP_200_OK)
 
